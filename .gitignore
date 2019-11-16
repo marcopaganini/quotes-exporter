@@ -1,6 +1,9 @@
 # Main binary
 quotes-exporter
 
+# Vim cruft
+*.sw?
+
 # Binaries for programs and plugins
 *.exe
 *.dll
