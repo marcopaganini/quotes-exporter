@@ -178,7 +178,7 @@ func help(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<p>Use the following examples to retrieve quotes:</p>")
 	for q := range queryTypes {
 		fmt.Fprintf(w, "<a href=\"http://localhost:%d/%s?symbols=AAAA,BBBB,CCCC\">", flagPort, q)
-		fmt.Fprintf(w, "http://localhost:%d/%s?symbol=AAAA,BBBB,DDDD</a>\n", flagPort, q)
+		fmt.Fprintf(w, "http://localhost:%d/%s?symbol=AAAA,BBBB,CCCC</a>\n", flagPort, q)
 		fmt.Fprintf(w, "<br>")
 	}
 	fmt.Fprintf(w, "<p>Replace symbols above by the desired stock or mutual fund symbols.</p>")
