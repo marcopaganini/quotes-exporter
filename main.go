@@ -34,19 +34,17 @@ var (
 			Help: "Duration of queries to the upstream API",
 		},
 	)
-	queryCount = prometheus.NewCounterVec(
+	queryCount = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "quotes_exporter_queries_total",
 			Help: "Count of completed queries",
 		},
-		[]string{"symbol"},
 	)
-	errorCount = prometheus.NewCounterVec(
+	errorCount = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "quotes_exporter_failed_queries_total",
 			Help: "Count of failed queries",
 		},
-		[]string{"symbol"},
 	)
 
 	port       = flag.Int("port", 9977, "Port to listen for HTTP requests.")
@@ -65,9 +63,7 @@ func (c collector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c collector) Collect(ch chan<- prometheus.Metric) {
-	for _, s := range c.symbols {
-		queryCount.WithLabelValues(s).Inc()
-	}
+	queryCount.Inc()
 
 	// Printable list of symbols.
 	symparam := strings.Join(c.symbols, ",")
@@ -78,8 +74,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 
 	assets, err := getStocksFromWTD(c.symbols)
 	if err != nil {
+		errorCount.Inc()
 		log.Printf("error looking up %s: %v\n", symparam, err)
-		errorCount.WithLabelValues(symparam).Inc()
 		return
 	}
 
@@ -91,8 +87,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 
 		price, err := strconv.ParseFloat(asset["price"], 64)
 		if err != nil {
+			errorCount.Inc()
 			log.Printf("error converting asset price to numeric %s: %v\n", asset["price"], err)
-			errorCount.WithLabelValues(asset["symbol"]).Inc()
 			continue
 		}
 		ch <- prometheus.MustNewConstMetric(
