@@ -26,6 +26,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const (
+	// Asset types
+	assetTypeStock      = iota
+	assetTypeMutualFund = iota
+
+	wtdTemplate = "https://api.worldtradingdata.com/api/v1/%s?symbol=%s&api_token=%s"
+)
+
 var (
 	// These are metrics for the collector itself
 	queryDuration = prometheus.NewSummary(
@@ -47,18 +55,22 @@ var (
 		},
 	)
 
-	port       = flag.Int("port", 9977, "Port to listen for HTTP requests.")
-	wtdToken   = flag.String("wtdtoken", "", "Token for worldtradingdata.com.")
-	queryTypes = []string{"stock", "fund"}
+	port     = flag.Int("port", 9977, "Port to listen for HTTP requests.")
+	wtdToken = flag.String("wtdtoken", "", "Token for worldtradingdata.com.")
+
+	queryTypes = map[string]int{
+		"stocks": assetTypeStock,
+		"funds":  assetTypeMutualFund,
+	}
 )
 
 type collector struct {
 	symbols []string
-	qtype   string
+	qtype   int
 }
 
 func (c collector) Describe(ch chan<- *prometheus.Desc) {
-	// Must send one description, or the registry panics
+	// Must send one description, or the registry panics.
 	ch <- prometheus.NewDesc("dummy", "dummy", nil, nil)
 }
 
@@ -72,7 +84,7 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 	log.Printf("Looking for %s\n", symparam)
 	queryDuration.Observe(float64(time.Since(start).Seconds()))
 
-	assets, err := getStocksFromWTD(c.symbols)
+	assets, err := getAssetsFromWTD(c.symbols, c.qtype)
 	if err != nil {
 		errorCount.Inc()
 		log.Printf("error looking up %s: %v\n", symparam, err)
@@ -100,8 +112,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-// getQuote returns information about a stock or ETF. It uses the path in the
-// URL to determine the type of security we need to retrieve.
+// getQuote returns information about a stock, mutual fund, or ETF. It uses the
+// path in the URL to determine the type of security we need to retrieve.
 func getQuote(w http.ResponseWriter, r *http.Request) {
 	// Get query type from URL. The collector uses this field to decide if we
 	// want to fetch the prices of stocks or funds.
@@ -135,36 +147,44 @@ func getQuote(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(w, r)
 }
 
-// getQueryType parses the URL Path and returns the correct query type or error if it can't
+// queryType parses the URL Path and returns the correct query type or error if it can't
 // determine the type.
-func queryType(path string) (string, error) {
-	// Parse /TYPE.
-	for _, q := range queryTypes {
+func queryType(path string) (int, error) {
+	// Parse URL looking for /query?
+	for query, qtype := range queryTypes {
+		q := fmt.Sprintf("/%s", query)
 		// Ignore short paths.
-		if len(path) < len(q)+1 {
+		if len(path) < len(q) {
 			continue
 		}
-		if path[1:len(q)+1] == q {
-			return q, nil
+		if strings.HasPrefix(path, q) {
+			return qtype, nil
 		}
 	}
 	// Not found
-	return "", fmt.Errorf("unknown path: %s", path)
+	return 0, fmt.Errorf("unknown path: %s", path)
 }
 
-// getStocksFromWTD retrieves stock data about symbols and returns a slice of
-// maps containing a list of key/value attributes from wtd for each of the
-// symbols.
-func getStocksFromWTD(symbols []string) ([]map[string]string, error) {
-	const (
-		WTDTemplate = "https://api.worldtradingdata.com/api/v1/stock?symbol=%s&api_token=%s"
-	)
-
+// getAssetsFromWTD retrieves asset (stock, mutualfunds) data about symbols and
+// returns a slice of maps containing a list of key/value attributes from wtd
+// for each of the symbols. Asset type (atype) should represent the type of
+// asset to retrieve (assetTypeStock, assetTypeMutualFund.)
+func getAssetsFromWTD(symbols []string, atype int) ([]map[string]string, error) {
 	var (
 		webdata map[string]interface{}
+		query   string
 	)
 
-	wtdurl := fmt.Sprintf(WTDTemplate, strings.Join(symbols, ","), *wtdToken)
+	switch atype {
+	case assetTypeStock:
+		query = "stock"
+	case assetTypeMutualFund:
+		query = "mutualfund"
+	default:
+		return nil, fmt.Errorf("invalid query type")
+	}
+
+	wtdurl := fmt.Sprintf(wtdTemplate, query, strings.Join(symbols, ","), *wtdToken)
 	resp, err := http.Get(wtdurl)
 	if err != nil {
 		return nil, err
@@ -224,7 +244,7 @@ func getStocksFromWTD(symbols []string) ([]map[string]string, error) {
 func help(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Prometheus Quotes Exporter</h1>")
 	fmt.Fprintf(w, "<p>Use the following examples to retrieve quotes:</p>")
-	for _, q := range queryTypes {
+	for q := range queryTypes {
 		fmt.Fprintf(w, "<a href=\"http://localhost:%d/%s?symbols=AAAA,BBBB,CCCC\">", *port, q)
 		fmt.Fprintf(w, "http://localhost:%d/%s?symbol=AAAA,BBBB,DDDD</a>\n", *port, q)
 		fmt.Fprintf(w, "<br>")
@@ -243,10 +263,13 @@ func main() {
 		prometheus.NewGoCollector(),
 	)
 
-	http.HandleFunc("/stock", getQuote)
-	http.HandleFunc("/fund", getQuote)
+	// Add handlers.
+	for q := range queryTypes {
+		http.HandleFunc(fmt.Sprintf("/%s", q), getQuote)
+	}
 	http.HandleFunc("/", help)
 	http.Handle("/metrics", promhttp.Handler())
+
 	log.Print("Listening on port ", *port)
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 }
