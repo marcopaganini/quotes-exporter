@@ -45,7 +45,7 @@ func getAssetsFromWTD(symbols []string, atype int) ([]map[string]string, error) 
 		return nil, fmt.Errorf("invalid query type")
 	}
 
-	wtdurl := fmt.Sprintf(wtdTemplate, query, strings.Join(symbols, ","), *wtdToken)
+	wtdurl := fmt.Sprintf(wtdTemplate, query, strings.Join(symbols, ","), flagWTDToken)
 	resp, err := http.Get(wtdurl)
 	if err != nil {
 		return nil, err

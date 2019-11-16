@@ -13,8 +13,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -53,8 +55,10 @@ var (
 	// Cache expensive WTD calls for 3 hours.
 	cache *memoize.Memoizer = memoize.NewMemoizer(3*time.Hour, 6*time.Hour)
 
-	port     = flag.Int("port", 9977, "Port to listen for HTTP requests.")
-	wtdToken = flag.String("wtdtoken", "", "Token for worldtradingdata.com.")
+	// flags
+	flagPort                  int
+	flagWTDToken              string
+	flagReadWTDTokenFromStdin bool
 )
 
 type collector struct {
@@ -172,15 +176,27 @@ func help(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Prometheus Quotes Exporter</h1>")
 	fmt.Fprintf(w, "<p>Use the following examples to retrieve quotes:</p>")
 	for q := range queryTypes {
-		fmt.Fprintf(w, "<a href=\"http://localhost:%d/%s?symbols=AAAA,BBBB,CCCC\">", *port, q)
-		fmt.Fprintf(w, "http://localhost:%d/%s?symbol=AAAA,BBBB,DDDD</a>\n", *port, q)
+		fmt.Fprintf(w, "<a href=\"http://localhost:%d/%s?symbols=AAAA,BBBB,CCCC\">", flagPort, q)
+		fmt.Fprintf(w, "http://localhost:%d/%s?symbol=AAAA,BBBB,DDDD</a>\n", flagPort, q)
 		fmt.Fprintf(w, "<br>")
 	}
 	fmt.Fprintf(w, "<p>Replace symbols above by the desired stock or mutual fund symbols.</p>")
 }
 
 func main() {
+	flag.IntVar(&flagPort, "port", 9977, "Port to listen for HTTP requests.")
+	flag.StringVar(&flagWTDToken, "wtdtoken", "", "Token for worldtradingdata.com.")
+	flag.BoolVar(&flagReadWTDTokenFromStdin, "read-wtd-token-from-stdin", false, "Read token from stdin (ignore wtdtoken)")
 	flag.Parse()
+
+	// Override flagWTDTOken if read from stdin specified (removing newlines).
+	if flagReadWTDTokenFromStdin {
+		in, err := ioutil.ReadAll(os.Stdin)
+		if err != nil {
+			log.Fatalln("Unable to read token from stdin: %v", err)
+		}
+		flagWTDToken = strings.TrimRight(string(in), "\n")
+	}
 
 	reg := prometheus.NewRegistry()
 
@@ -197,6 +213,6 @@ func main() {
 	http.HandleFunc("/", help)
 	http.Handle("/metrics", promhttp.Handler())
 
-	log.Print("Listening on port ", *port)
-	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	log.Print("Listening on port ", flagPort)
+	http.ListenAndServe(fmt.Sprintf(":%d", flagPort), nil)
 }
