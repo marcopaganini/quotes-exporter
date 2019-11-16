@@ -85,7 +85,7 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		return getAssetsFromWTD(c.symbols, c.qtype)
 	}
 
-	assets, err, cached := cache.Memoize("symparam", cachedGetAssetsFromWTD)
+	assets, err, cached := cache.Memoize(symparam, cachedGetAssetsFromWTD)
 	if err != nil {
 		errorCount.Inc()
 		log.Printf("error looking up %s: %v\n", symparam, err)
