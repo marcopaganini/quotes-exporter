@@ -11,10 +11,8 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -24,14 +22,6 @@ import (
 	//"github.com/kofalt/go-memoize"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-)
-
-const (
-	// Asset types
-	assetTypeStock      = iota
-	assetTypeMutualFund = iota
-
-	wtdTemplate = "https://api.worldtradingdata.com/api/v1/%s?symbol=%s&api_token=%s"
 )
 
 var (
@@ -103,6 +93,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 			log.Printf("error converting asset price to numeric %s: %v\n", asset["price"], err)
 			continue
 		}
+		log.Printf("Found %s (%s), price: %f\n", asset["symbol"], asset["name"], price)
+
 		ch <- prometheus.MustNewConstMetric(
 			prometheus.NewDesc("quote_exporter_stock_price", "Asset Price.", ls, nil),
 			prometheus.GaugeValue,
@@ -163,81 +155,6 @@ func queryType(path string) (int, error) {
 	}
 	// Not found
 	return 0, fmt.Errorf("unknown path: %s", path)
-}
-
-// getAssetsFromWTD retrieves asset (stock, mutualfunds) data about symbols and
-// returns a slice of maps containing a list of key/value attributes from wtd
-// for each of the symbols. Asset type (atype) should represent the type of
-// asset to retrieve (assetTypeStock, assetTypeMutualFund.)
-func getAssetsFromWTD(symbols []string, atype int) ([]map[string]string, error) {
-	var (
-		webdata map[string]interface{}
-		query   string
-	)
-
-	switch atype {
-	case assetTypeStock:
-		query = "stock"
-	case assetTypeMutualFund:
-		query = "mutualfund"
-	default:
-		return nil, fmt.Errorf("invalid query type")
-	}
-
-	wtdurl := fmt.Sprintf(wtdTemplate, query, strings.Join(symbols, ","), *wtdToken)
-	resp, err := http.Get(wtdurl)
-	if err != nil {
-		return nil, err
-	}
-
-	jdata, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(jdata, &webdata); err != nil {
-		return nil, fmt.Errorf("unable to decode json: %v", jdata)
-	}
-
-	// If we don't have a "data" array in the json return, something went wrong. WTD
-	// returns 200 even on API errors (and sets the error message on the json itself)
-	if webdata["data"] == nil {
-		return nil, fmt.Errorf("invalid json response: %v", string(jdata))
-	}
-
-	ret := []map[string]string{}
-
-	// The answer from WTD is formatted as:
-	// {
-	//   "symbols_requested": 3,
-	//   "symbols_returned": 3,
-	//   "data": [
-	//     {
-	//       "symbol": "FOO",
-	//       "name": "Foo Inc.",
-	//       "price": "14.38",
-	//       (...)
-	//     }
-	//     {
-	//       "symbol": "BAR",
-	//       "name": "Bar Inc.",
-	//       "price": "16.66",
-	//       (...)
-	//     }
-	//   ]
-	// }
-
-	data := webdata["data"].([]interface{})
-	for _, d := range data {
-		item := map[string]string{}
-		kv := d.(map[string]interface{})
-		for k, v := range kv {
-			item[k] = v.(string)
-		}
-		ret = append(ret, item)
-	}
-
-	return ret, nil
 }
 
 // help returns a help message for those using the root URL.
