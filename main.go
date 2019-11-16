@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	//"github.com/kofalt/go-memoize"
+	"github.com/kofalt/go-memoize"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -45,13 +45,16 @@ var (
 		},
 	)
 
-	port     = flag.Int("port", 9977, "Port to listen for HTTP requests.")
-	wtdToken = flag.String("wtdtoken", "", "Token for worldtradingdata.com.")
-
 	queryTypes = map[string]int{
 		"stocks": assetTypeStock,
 		"funds":  assetTypeMutualFund,
 	}
+
+	// Cache expensive WTD calls for 3 hours.
+	cache *memoize.Memoizer = memoize.NewMemoizer(3*time.Hour, 6*time.Hour)
+
+	port     = flag.Int("port", 9977, "Port to listen for HTTP requests.")
+	wtdToken = flag.String("wtdtoken", "", "Token for worldtradingdata.com.")
 )
 
 type collector struct {
@@ -74,17 +77,24 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 	log.Printf("Looking for %s\n", symparam)
 	queryDuration.Observe(float64(time.Since(start).Seconds()))
 
-	assets, err := getAssetsFromWTD(c.symbols, c.qtype)
+	cachedGetAssetsFromWTD := func() (interface{}, error) {
+		return getAssetsFromWTD(c.symbols, c.qtype)
+	}
+
+	assets, err, cached := cache.Memoize("symparam", cachedGetAssetsFromWTD)
 	if err != nil {
 		errorCount.Inc()
 		log.Printf("error looking up %s: %v\n", symparam, err)
 		return
 	}
+	if cached {
+		log.Printf("Using cached results for %s", symparam)
+	}
 
 	// ls contains the list of labels and lvs the corresponding values.
 	ls := []string{"symbol", "name"}
 
-	for _, asset := range assets {
+	for _, asset := range assets.([]map[string]string) {
 		lvs := []string{asset["symbol"], asset["name"]}
 
 		price, err := strconv.ParseFloat(asset["price"], 64)
