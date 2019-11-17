@@ -224,5 +224,5 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 
 	log.Print("Listening on port ", flagPort)
-	http.ListenAndServe(fmt.Sprintf(":%d", flagPort), nil)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", flagPort), nil))
 }
