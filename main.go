@@ -58,9 +58,9 @@ var (
 	cache *memoize.Memoizer = memoize.NewMemoizer(3*time.Hour, 6*time.Hour)
 
 	// flags
-	flagPort                  int
-	flagWTDToken              string
-	flagReadWTDTokenFromStdin bool
+	flagPort      int
+	flagToken     string
+	flagTokenFile string
 )
 
 type collector struct {
@@ -197,17 +197,32 @@ func help(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.IntVar(&flagPort, "port", 9340, "Port to listen for HTTP requests.")
-	flag.StringVar(&flagWTDToken, "wtdtoken", "", "Token for worldtradingdata.com.")
-	flag.BoolVar(&flagReadWTDTokenFromStdin, "read-wtd-token-from-stdin", false, "Read token from stdin (ignore wtdtoken)")
+	flag.StringVar(&flagToken, "token", "", "Token for worldtradingdata.com.")
+	flag.StringVar(&flagTokenFile, "tokenfile", "", "Read token from file (or \"-\" for stdin)")
 	flag.Parse()
 
-	// Override flagWTDTOken if read from stdin specified (removing newlines).
-	if flagReadWTDTokenFromStdin {
-		in, err := ioutil.ReadAll(os.Stdin)
-		if err != nil {
-			log.Fatalf("Unable to read token from stdin: %v", err)
+	// Read token from --token or --tokenfile. If file is '-', read from stdin.
+	// These options are mutually incompatible.
+	if flagToken != "" && flagTokenFile != "" {
+		log.Fatalf("Options --token and --tokenfile are mutually exclusive.")
+	}
+
+	if flagTokenFile != "" {
+		var (
+			err error
+			in  []byte
+		)
+
+		// Read from stdin if file == "-".
+		if flagTokenFile == "-" {
+			in, err = ioutil.ReadAll(os.Stdin)
+		} else {
+			in, err = ioutil.ReadFile(flagTokenFile)
 		}
-		flagWTDToken = strings.TrimRight(string(in), "\n")
+		if err != nil {
+			log.Fatalf("Unable to read token: %v", err)
+		}
+		flagToken = strings.TrimRight(string(in), "\n")
 	}
 
 	reg := prometheus.NewRegistry()
