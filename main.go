@@ -124,6 +124,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 // "type" in the list of symbols prefix to determine the type of securities to
 // retrieve.
 func getQuote(w http.ResponseWriter, r *http.Request) {
+	log.Printf("URL: %s\n", r.RequestURI)
+
 	// qtype is used by Collect to determine which type of securities to fetch.
 	qtype, symbols, err := parseQuery(r.URL)
 	if err != nil {
