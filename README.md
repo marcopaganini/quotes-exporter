@@ -41,10 +41,22 @@ removal of the real GOPATH.
 
 ## Running the exporter
 
+Save your token into a file under your home directory and make that file readable
+only to you:
+
+```bash
+TFILE="$HOME/.worldtradingdata.token"
+rm -f "$TFILE"
+echo "your_token_here" > "$TFILE"
+chmod 700 "$TFILE"
+```
+
+This only needs to be done once (or if you request a token change.)
+
 To run the exporter, just type:
 
 ```
-echo "your_token" | quotes-exporter --read-wtd-token-from-stdin
+quotes-exporter --tokenfile "$HOME/.worldtradingdata.token"
 ```
 
 Make sure to replace "your token" above with the real token from [World Trading
