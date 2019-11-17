@@ -205,7 +205,7 @@ func main() {
 	if flagReadWTDTokenFromStdin {
 		in, err := ioutil.ReadAll(os.Stdin)
 		if err != nil {
-			log.Fatalln("Unable to read token from stdin: %v", err)
+			log.Fatalf("Unable to read token from stdin: %v", err)
 		}
 		flagWTDToken = strings.TrimRight(string(in), "\n")
 	}
