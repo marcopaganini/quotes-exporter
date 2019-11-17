@@ -64,8 +64,8 @@ var (
 )
 
 type collector struct {
-	symbols []string
-	qtype   int
+	qtype   []int
+	symbols [][]string
 }
 
 func (c collector) Describe(ch chan<- *prometheus.Desc) {
@@ -76,47 +76,49 @@ func (c collector) Describe(ch chan<- *prometheus.Desc) {
 func (c collector) Collect(ch chan<- prometheus.Metric) {
 	queryCount.Inc()
 
-	// Printable list of symbols.
-	symparam := strings.Join(c.symbols, ",")
+	for idx := range c.qtype {
+		// Printable list of symbols.
+		symparam := strings.Join(c.symbols[idx], ",")
 
-	start := time.Now()
-	log.Printf("Looking for %s\n", symparam)
-	queryDuration.Observe(float64(time.Since(start).Seconds()))
+		start := time.Now()
+		log.Printf("Looking for %s\n", symparam)
+		queryDuration.Observe(float64(time.Since(start).Seconds()))
 
-	cachedGetAssetsFromWTD := func() (interface{}, error) {
-		return getAssetsFromWTD(c.symbols, c.qtype)
-	}
+		cachedGetAssetsFromWTD := func() (interface{}, error) {
+			return getAssetsFromWTD(c.symbols[idx], c.qtype[idx])
+		}
 
-	assets, err, cached := cache.Memoize(symparam, cachedGetAssetsFromWTD)
-	if err != nil {
-		errorCount.Inc()
-		log.Printf("error looking up %s: %v\n", symparam, err)
-		return
-	}
-	if cached {
-		log.Printf("Using cached results for %s", symparam)
-	}
-
-	// ls contains the list of labels and lvs the corresponding values.
-	ls := []string{"symbol", "name"}
-
-	for _, asset := range assets.([]map[string]string) {
-		lvs := []string{asset["symbol"], asset["name"]}
-
-		price, err := strconv.ParseFloat(asset["price"], 64)
+		assets, err, cached := cache.Memoize(symparam, cachedGetAssetsFromWTD)
 		if err != nil {
 			errorCount.Inc()
-			log.Printf("error converting asset price to numeric %s: %v\n", asset["price"], err)
-			continue
+			log.Printf("error looking up %s: %v\n", symparam, err)
+			return
 		}
-		log.Printf("Found %s (%s), price: %f\n", asset["symbol"], asset["name"], price)
+		if cached {
+			log.Printf("Using cached results for %s", symparam)
+		}
 
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("quote_exporter_price", "Asset Price.", ls, nil),
-			prometheus.GaugeValue,
-			price,
-			lvs...,
-		)
+		// ls contains the list of labels and lvs the corresponding values.
+		ls := []string{"symbol", "name"}
+
+		for _, asset := range assets.([]map[string]string) {
+			lvs := []string{asset["symbol"], asset["name"]}
+
+			price, err := strconv.ParseFloat(asset["price"], 64)
+			if err != nil {
+				errorCount.Inc()
+				log.Printf("error converting asset price to numeric %s: %v\n", asset["price"], err)
+				continue
+			}
+			log.Printf("Found %s (%s), price: %f\n", asset["symbol"], asset["name"], price)
+
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("quote_exporter_price", "Asset Price.", ls, nil),
+				prometheus.GaugeValue,
+				price,
+				lvs...,
+			)
+		}
 	}
 }
 
@@ -126,18 +128,12 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 func getQuote(w http.ResponseWriter, r *http.Request) {
 	log.Printf("URL: %s\n", r.RequestURI)
 
-	// qtype is used by Collect to determine which type of securities to fetch.
-	qtype, symbols, err := parseQuery(r.URL)
+	collector, err := newCollector(r.URL)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-
 	registry := prometheus.NewRegistry()
-	collector := &collector{
-		symbols: symbols,
-		qtype:   qtype,
-	}
 
 	// These will be collected every time the /stock or /fund endpoint is reached.
 	registry.MustRegister(
@@ -151,28 +147,36 @@ func getQuote(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(w, r)
 }
 
-// parseQuery parses the URL, fetching the Query type by prefix. Returns the
-// query type and the list of symbols
-func parseQuery(myurl *url.URL) (int, []string, error) {
-	// Typical query is formatted as: ?symbols=[type:]symbol,symbol...
+// newCollector returns a new collector object with parsed data from the URL object.
+func newCollector(myurl *url.URL) (collector, error) {
+	var (
+		qtypes  []int
+		symbols [][]string
+	)
+
+	// Typical query is formatted as: ?symbols=type:AAA,BBB...&symbols=type:CCC,DDD...
 	qvalues, ok := myurl.Query()["symbols"]
 	if !ok {
-		return 0, nil, fmt.Errorf("missing \"symbols\" in query")
+		return collector{}, fmt.Errorf("missing \"symbols\" in query")
 	}
-	qvalue := qvalues[0]
 
-	for typePrefix, qtype := range queryTypes {
-		t := fmt.Sprintf("%s:", typePrefix)
-		// Ignore if values are shorter than the query type prefix.
-		if len(qvalue) < len(t) {
+	for _, qvalue := range qvalues {
+		pos := strings.Index(qvalue, ":")
+		if pos == -1 {
+			return collector{}, fmt.Errorf("missing type specifier in query: %s", qvalue)
+		}
+		t := qvalue[:pos]
+		s := qvalue[pos+1:]
+
+		if qtype, ok := queryTypes[t]; ok {
+			qtypes = append(qtypes, qtype)
+			symbols = append(symbols, strings.Split(s, ","))
 			continue
 		}
-		if strings.HasPrefix(qvalue, t) {
-			return qtype, strings.Split(qvalue[len(typePrefix)+1:], ","), nil
-		}
+		return collector{}, fmt.Errorf("invalid type %q in query: %s", t, qvalue)
 	}
-	// Not found
-	return 0, nil, fmt.Errorf("unknown type in query: %s", qvalue)
+
+	return collector{qtypes, symbols}, nil
 }
 
 // help returns a help message for those using the root URL.
