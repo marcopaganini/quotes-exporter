@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -49,8 +50,8 @@ var (
 	)
 
 	queryTypes = map[string]int{
-		"stocks": assetTypeStock,
-		"funds":  assetTypeMutualFund,
+		"stock": assetTypeStock,
+		"fund":  assetTypeMutualFund,
 	}
 
 	// Cache expensive WTD calls for 3 hours.
@@ -111,7 +112,7 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		log.Printf("Found %s (%s), price: %f\n", asset["symbol"], asset["name"], price)
 
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("quote_exporter_stock_price", "Asset Price.", ls, nil),
+			prometheus.NewDesc("quote_exporter_price", "Asset Price.", ls, nil),
 			prometheus.GaugeValue,
 			price,
 			lvs...,
@@ -120,19 +121,13 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 // getQuote returns information about a stock, mutual fund, or ETF. It uses the
-// path in the URL to determine the type of security we need to retrieve.
+// "type" in the list of symbols prefix to determine the type of securities to
+// retrieve.
 func getQuote(w http.ResponseWriter, r *http.Request) {
-	// Get query type from URL. The collector uses this field to decide if we
-	// want to fetch the prices of stocks or funds.
-	qtype, err := queryType(r.URL.Path)
+	// qtype is used by Collect to determine which type of securities to fetch.
+	qtype, symbols, err := parseQuery(r.URL)
 	if err != nil {
 		log.Print(err)
-		return
-	}
-
-	symbols, ok := r.URL.Query()["symbols"]
-	if !ok {
-		log.Printf("Missing symbols in query.")
 		return
 	}
 
@@ -154,34 +149,50 @@ func getQuote(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(w, r)
 }
 
-// queryType parses the URL Path and returns the correct query type or error if it can't
-// determine the type.
-func queryType(path string) (int, error) {
-	// Parse URL looking for /query?
-	for query, qtype := range queryTypes {
-		q := fmt.Sprintf("/%s", query)
-		// Ignore short paths.
-		if len(path) < len(q) {
+// parseQuery parses the URL, fetching the Query type by prefix. Returns the
+// query type and the list of symbols
+func parseQuery(myurl *url.URL) (int, []string, error) {
+	// Typical query is formatted as: ?symbols=[type:]symbol,symbol...
+	qvalues, ok := myurl.Query()["symbols"]
+	if !ok {
+		return 0, nil, fmt.Errorf("missing \"symbols\" in query")
+	}
+	qvalue := qvalues[0]
+
+	for typePrefix, qtype := range queryTypes {
+		t := fmt.Sprintf("%s:", typePrefix)
+		// Ignore if values are shorter than the query type prefix.
+		if len(qvalue) < len(t) {
 			continue
 		}
-		if strings.HasPrefix(path, q) {
-			return qtype, nil
+		if strings.HasPrefix(qvalue, t) {
+			return qtype, strings.Split(qvalue[len(typePrefix)+1:], ","), nil
 		}
 	}
 	// Not found
-	return 0, fmt.Errorf("unknown path: %s", path)
+	return 0, nil, fmt.Errorf("unknown type in query: %s", qvalue)
 }
 
 // help returns a help message for those using the root URL.
 func help(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Prometheus Quotes Exporter</h1>")
-	fmt.Fprintf(w, "<p>Use the following examples to retrieve quotes:</p>")
-	for q := range queryTypes {
-		fmt.Fprintf(w, "<a href=\"http://localhost:%d/%s?symbols=AAAA,BBBB,CCCC\">", flagPort, q)
-		fmt.Fprintf(w, "http://localhost:%d/%s?symbol=AAAA,BBBB,CCCC</a>\n", flagPort, q)
-		fmt.Fprintf(w, "<br>")
+	fmt.Fprintf(w, "<p>To fetch quotes, your URL must be formatted as:</p>")
+	fmt.Fprintf(w, "http://localhost:%d/price?symbols=type:AAAA,BBBB,CCCC", flagPort)
+	fmt.Fprintf(w, "<p>")
+	fmt.Fprintf(w, "The \"type\" designator above could be \"stock\" or \"fund\" to indicate<br>")
+	fmt.Fprintf(w, "the symbols following refer to stocks or mutual funds, respectively.</p>")
+	fmt.Fprintf(w, "<p><b>Examples:</b></p>")
+	fmt.Fprintf(w, "<ul>")
+
+	symbols := []string{
+		"stock:AMZN,GOOG,SNAP",
+		"fund:VTIAX",
 	}
-	fmt.Fprintf(w, "<p>Replace symbols above by the desired stock or mutual fund symbols.</p>")
+
+	for _, s := range symbols {
+		fmt.Fprintf(w, "<li><a href=\"http://localhost:%d/price?symbols=%s\">", flagPort, s)
+		fmt.Fprintf(w, "http://localhost:%d/price?symbols=%s</a></li>", flagPort, s)
+	}
 }
 
 func main() {
@@ -208,10 +219,8 @@ func main() {
 	)
 
 	// Add handlers.
-	for q := range queryTypes {
-		http.HandleFunc(fmt.Sprintf("/%s", q), getQuote)
-	}
 	http.HandleFunc("/", help)
+	http.HandleFunc("/price", getQuote)
 	http.Handle("/metrics", promhttp.Handler())
 
 	log.Print("Listening on port ", flagPort)

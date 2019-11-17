@@ -58,7 +58,7 @@ flag to change the port number, if necessary.
 Use your browser to access [localhost:9340](http://localhost:9340). The exporter should display a simple
 help page. If that's OK, you can attempt to fetch a stock using something like:
 
-[http://localhost:9340/stocks?symbols=GOOGL](http://localhost:9340/stocks?symbols=GOOGL)
+[http://localhost:9340/price?symbols=stock:GOOGL](http://localhost:9340/price?symbols=stock:GOOGL)
 
 The result should be similar to:
 
