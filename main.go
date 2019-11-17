@@ -185,7 +185,7 @@ func help(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	flag.IntVar(&flagPort, "port", 9977, "Port to listen for HTTP requests.")
+	flag.IntVar(&flagPort, "port", 9340, "Port to listen for HTTP requests.")
 	flag.StringVar(&flagWTDToken, "wtdtoken", "", "Token for worldtradingdata.com.")
 	flag.BoolVar(&flagReadWTDTokenFromStdin, "read-wtd-token-from-stdin", false, "Read token from stdin (ignore wtdtoken)")
 	flag.Parse()

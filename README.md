@@ -50,15 +50,15 @@ echo "your_token" | quotes-exporter --read-wtd-token-from-stdin
 Make sure to replace "your token" above with the real token from [World Trading
 Data](worldtradingdata.com).
 
-The exporter listens on port 9977 by default. You can use the `--port` command-line
+The exporter listens on port 9340 by default. You can use the `--port` command-line
 flag to change the port number, if necessary.
 
 ## Testing
 
-Use your browser to access [localhost:9977](http://localhost:9977). The exporter should display a simple
+Use your browser to access [localhost:9340](http://localhost:9340). The exporter should display a simple
 help page. If that's OK, you can attempt to fetch a stock using something like:
 
-[http://localhost:9977/stocks?symbols=GOOGL](http://localhost:9977/stocks?symbols=GOOGL)
+[http://localhost:9340/stocks?symbols=GOOGL](http://localhost:9340/stocks?symbols=GOOGL)
 
 The result should be similar to:
 
