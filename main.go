@@ -54,8 +54,8 @@ var (
 		"fund":  assetTypeMutualFund,
 	}
 
-	// Cache expensive WTD calls for 3 hours.
-	cache *memoize.Memoizer = memoize.NewMemoizer(3*time.Hour, 6*time.Hour)
+	// Cache expensive WTD calls for 1 hour.
+	cache *memoize.Memoizer = memoize.NewMemoizer(time.Hour, 3*time.Hour)
 
 	// flags
 	flagPort      int

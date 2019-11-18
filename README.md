@@ -17,7 +17,7 @@ token. Guard your token carefully as anyone with it can exhaust your free daily
 quota.
 
 The program is smart enough to "memoize" calls to worldtradingdata (by default
-at most one call for each set of symbols every 3 hours). This should prevent
+at most one call for each set of symbols every 1 hour). This should prevent
 accidental quota exhaustion, as prometheus tends to scrape exporters on
 aggressive time intervals.
 
