@@ -113,7 +113,7 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 			log.Printf("Found %s (%s), price: %f\n", asset["symbol"], asset["name"], price)
 
 			ch <- prometheus.MustNewConstMetric(
-				prometheus.NewDesc("quote_exporter_price", "Asset Price.", ls, nil),
+				prometheus.NewDesc("quotes_exporter_price", "Asset Price.", ls, nil),
 				prometheus.GaugeValue,
 				price,
 				lvs...,
