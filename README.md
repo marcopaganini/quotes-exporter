@@ -1,5 +1,7 @@
 # quotes-exporter
 
+![](https://github.com/marcopaganini/quotes-exporter/workflows/Go/badge.svg)
+
 This is a simple stock and funds quotes exporter for
 [prometheus](http://prometheus.io). This exporter allows a prometheus instance
 to monitor prices for stocks, ETFs, and mutual funds, possibly alerting the
