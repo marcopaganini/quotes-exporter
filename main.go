@@ -55,7 +55,7 @@ var (
 	}
 
 	// Cache expensive WTD calls for 1 hour.
-	cache *memoize.Memoizer = memoize.NewMemoizer(time.Hour, 3*time.Hour)
+	cache *memoize.Memoizer = memoize.NewMemoizer(30*time.Minute, 3*time.Hour)
 
 	// flags
 	flagPort      int
