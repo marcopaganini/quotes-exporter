@@ -54,7 +54,7 @@ var (
 		"fund":  assetTypeMutualFund,
 	}
 
-	// Cache expensive WTD calls for 1 hour.
+	// Cache external API consuming calls for 30 minutes.
 	cache *memoize.Memoizer = memoize.NewMemoizer(30*time.Minute, 3*time.Hour)
 
 	// flags
@@ -63,16 +63,25 @@ var (
 	flagTokenFile string
 )
 
+// fetcherFunc defines the type of a function used to retrieve financial data
+// from a remote provider.
+type fetcherFunc func([]string, int) ([]map[string]string, error)
+
+// collector holds data for a prometheus collector.
 type collector struct {
 	qtype   []int
 	symbols [][]string
+	fetcher fetcherFunc
 }
 
+// Describe outputs description for prometheus timeseries.
 func (c collector) Describe(ch chan<- *prometheus.Desc) {
 	// Must send one description, or the registry panics.
 	ch <- prometheus.NewDesc("dummy", "dummy", nil, nil)
 }
 
+// Collect retrieves quote data and ouputs prometheus compatible timeseries on
+// the output channel.
 func (c collector) Collect(ch chan<- prometheus.Metric) {
 	queryCount.Inc()
 
@@ -85,7 +94,7 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		queryDuration.Observe(float64(time.Since(start).Seconds()))
 
 		cachedGetAssetsFromWTD := func() (interface{}, error) {
-			return getAssetsFromWTD(c.symbols[idx], c.qtype[idx])
+			return c.fetcher(c.symbols[idx], c.qtype[idx])
 		}
 
 		assets, err, cached := cache.Memoize(symparam, cachedGetAssetsFromWTD)
@@ -125,14 +134,15 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 // getQuote returns information about a stock, mutual fund, or ETF. It uses the
 // "type" in the list of symbols prefix to determine the type of securities to
 // retrieve.
-func getQuote(w http.ResponseWriter, r *http.Request) {
+func getQuote(w http.ResponseWriter, r *http.Request, fetcher fetcherFunc) {
 	log.Printf("URL: %s\n", r.RequestURI)
 
-	collector, err := newCollector(r.URL)
+	collector, err := newCollector(r.URL, fetcher)
 	if err != nil {
 		log.Print(err)
 		return
 	}
+
 	registry := prometheus.NewRegistry()
 
 	// These will be collected every time the /stock or /fund endpoint is reached.
@@ -148,7 +158,7 @@ func getQuote(w http.ResponseWriter, r *http.Request) {
 }
 
 // newCollector returns a new collector object with parsed data from the URL object.
-func newCollector(myurl *url.URL) (collector, error) {
+func newCollector(myurl *url.URL, fetcher fetcherFunc) (collector, error) {
 	var (
 		qtypes  []int
 		symbols [][]string
@@ -176,7 +186,7 @@ func newCollector(myurl *url.URL) (collector, error) {
 		return collector{}, fmt.Errorf("invalid type %q in query: %s", t, qvalue)
 	}
 
-	return collector{qtypes, symbols}, nil
+	return collector{qtypes, symbols, fetcher}, nil
 }
 
 // help returns a help message for those using the root URL.
@@ -241,8 +251,11 @@ func main() {
 
 	// Add handlers.
 	http.HandleFunc("/", help)
-	http.HandleFunc("/price", getQuote)
 	http.Handle("/metrics", promhttp.Handler())
+
+	http.HandleFunc("/price", func(w http.ResponseWriter, r *http.Request) {
+		getQuote(w, r, getAssetsFromWTD)
+	})
 
 	log.Print("Listening on port ", flagPort)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", flagPort), nil))
