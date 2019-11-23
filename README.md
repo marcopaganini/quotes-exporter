@@ -41,6 +41,17 @@ Please note that we remove the temporary GOPATH using by repeating the
 directory name instead of referencing $GOPATH. This should prevent accidental
 removal of the real GOPATH.
 
+## Docker image
+
+The repository includes a ready to use `Dockerfile`. To build a new image, type:
+
+```bash
+make TOKEN="your_token_from_worldtradingdata" image
+```
+
+Run `docker images` to see the list of images. The new image is named as
+$USER/quotes-exporter and exports port 9340 to your host.
+
 ## Running the exporter
 
 Save your token into a file under your home directory and make that file readable

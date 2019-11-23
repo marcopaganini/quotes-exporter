@@ -1,0 +1,6 @@
+*.md
+*.sw*
+.dockerignore
+.git*
+Dockerfile*
+quotes-exporter
