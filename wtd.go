@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -94,7 +95,12 @@ func getAssetsFromWTD(symbols []string, atype int) ([]map[string]string, error) 
 		item := map[string]string{}
 		kv := d.(map[string]interface{})
 		for k, v := range kv {
-			item[k] = v.(string)
+			val, ok := v.(string)
+			if !ok {
+				log.Printf("Warning: Cannot convert key %s to string : %+v\n", k, v)
+				continue
+			}
+			item[k] = val
 		}
 		ret = append(ret, item)
 	}

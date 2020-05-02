@@ -113,6 +113,12 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		for _, asset := range assets.([]map[string]string) {
 			lvs := []string{asset["symbol"], asset["name"]}
 
+			// WTD will send null prices for stocks over the weekend. The
+			// fetcher will not populate the assets in this case.
+			if _, ok := asset["price"]; !ok {
+				log.Printf("no price for asset %s. Skipping.\n", asset["symbol"])
+				continue
+			}
 			price, err := strconv.ParseFloat(asset["price"], 64)
 			if err != nil {
 				errorCount.Inc()
