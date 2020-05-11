@@ -8,13 +8,8 @@ ${bin}: Makefile ${src}
 	go build -v -o "${bin}"
 
 # Docker targets
-image: check-token
-	docker build -t ${USER}/quotes-exporter --build-arg TOKEN=${TOKEN} .
+image:
+	docker build -t ${USER}/quotes-exporter .
 
-force-image: check-token
-	docker build --no-cache -t ${USER}/quotes-exporter --build-arg TOKEN=${TOKEN} .
-
-check-token:
-ifndef TOKEN
-	$(error TOKEN is undefined)
-endif
+force-image:
+	docker build --no-cache -t ${USER}/quotes-exporter .

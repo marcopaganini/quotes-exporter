@@ -4,22 +4,19 @@
 
 This is a simple stock and funds quotes exporter for
 [prometheus](http://prometheus.io). This exporter allows a prometheus instance
-to monitor prices for stocks, ETFs, and mutual funds, possibly alerting the
-user on any desirable condition (note: prometheus configuration not covered here.)
+to monitor prices of stocks, ETFs, and mutual funds, possibly alerting the user
+on any desirable condition (note: prometheus configuration not covered here.)
 
 ## Data Provider Setup
 
-Unlike similar projects, which attempt to scrape data from various websites,
-with different degrees of success, quotes-exporter uses data from [World
-Trading Data](worldtradingdata.com), a free (up to 250 queries per day)
-provider of financial quote data. Create a free account and annotate your API
-token. Guard your token carefully as anyone with it can exhaust your free daily
-quota.
+This project uses the [finance-go](https://github.com/piquette/finance-go)
+library to fetch stock price information. The library currently retrieves
+quotes from Yahoo Finance.
 
-The program is smart enough to "memoize" calls to worldtradingdata (by default
-at most one call for each set of symbols every 1 hour). This should prevent
-accidental quota exhaustion, as prometheus tends to scrape exporters on
-aggressive time intervals.
+The program is smart enough to "memoize" calls to the financial data provider
+and by default caches quotes for 10m. This should reduce the load on the
+finance servers, as prometheus tends to scrape exporters on short time
+intervals.
 
 ## Building the exporter
 
@@ -37,16 +34,12 @@ export GOPATH=$OLDGOPATH
 rm -rf /tmp/tempgo
 ```
 
-Please note that we remove the temporary GOPATH using by repeating the
-directory name instead of referencing $GOPATH. This should prevent accidental
-removal of the real GOPATH.
-
 ## Docker image
 
 The repository includes a ready to use `Dockerfile`. To build a new image, type:
 
 ```bash
-make TOKEN="your_token_from_worldtradingdata" image
+make image
 ```
 
 Run `docker images` to see the list of images. The new image is named as
@@ -54,26 +47,11 @@ $USER/quotes-exporter and exports port 9340 to your host.
 
 ## Running the exporter
 
-Save your token into a file under your home directory and make that file readable
-only to you:
-
-```bash
-TFILE="$HOME/.worldtradingdata.token"
-rm -f "$TFILE"
-echo "your_token_here" > "$TFILE"
-chmod 700 "$TFILE"
-```
-
-This only needs to be done once (or if you request a token change.)
-
 To run the exporter, just type:
 
+```base
+quotes-exporter
 ```
-quotes-exporter --tokenfile "$HOME/.worldtradingdata.token"
-```
-
-Make sure to replace "your token" above with the real token from [World Trading
-Data](worldtradingdata.com).
 
 The exporter listens on port 9340 by default. You can use the `--port` command-line
 flag to change the port number, if necessary.
@@ -83,7 +61,7 @@ flag to change the port number, if necessary.
 Use your browser to access [localhost:9340](http://localhost:9340). The exporter should display a simple
 help page. If that's OK, you can attempt to fetch a stock using something like:
 
-[http://localhost:9340/price?symbols=stock:GOOGL](http://localhost:9340/price?symbols=stock:GOOGL)
+[http://localhost:9340/price?symbols=GOOGL](http://localhost:9340/price?symbols=GOOGL)
 
 The result should be similar to:
 

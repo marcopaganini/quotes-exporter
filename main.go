@@ -14,136 +14,19 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 
-	"github.com/kofalt/go-memoize"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var (
-	// These are metrics for the collector itself
-	queryDuration = prometheus.NewSummary(
-		prometheus.SummaryOpts{
-			Name: "quotes_exporter_query_duration_seconds",
-			Help: "Duration of queries to the upstream API",
-		},
-	)
-	queryCount = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "quotes_exporter_queries_total",
-			Help: "Count of completed queries",
-		},
-	)
-	errorCount = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "quotes_exporter_failed_queries_total",
-			Help: "Count of failed queries",
-		},
-	)
-
-	queryTypes = map[string]int{
-		"stock": assetTypeStock,
-		"fund":  assetTypeMutualFund,
-	}
-
-	// Cache external API consuming calls for 30 minutes.
-	cache *memoize.Memoizer = memoize.NewMemoizer(30*time.Minute, 3*time.Hour)
-
-	// flags
-	flagPort      int
-	flagToken     string
-	flagTokenFile string
-)
-
-// fetcherFunc defines the type of a function used to retrieve financial data
-// from a remote provider.
-type fetcherFunc func([]string, int) ([]map[string]string, error)
-
-// collector holds data for a prometheus collector.
-type collector struct {
-	qtype   []int
-	symbols [][]string
-	fetcher fetcherFunc
-}
-
-// Describe outputs description for prometheus timeseries.
-func (c collector) Describe(ch chan<- *prometheus.Desc) {
-	// Must send one description, or the registry panics.
-	ch <- prometheus.NewDesc("dummy", "dummy", nil, nil)
-}
-
-// Collect retrieves quote data and ouputs prometheus compatible timeseries on
-// the output channel.
-func (c collector) Collect(ch chan<- prometheus.Metric) {
-	queryCount.Inc()
-
-	for idx := range c.qtype {
-		// Printable list of symbols.
-		symparam := strings.Join(c.symbols[idx], ",")
-
-		start := time.Now()
-		log.Printf("Looking for %s\n", symparam)
-		queryDuration.Observe(float64(time.Since(start).Seconds()))
-
-		cachedGetAssetsFromWTD := func() (interface{}, error) {
-			return c.fetcher(c.symbols[idx], c.qtype[idx])
-		}
-
-		assets, err, cached := cache.Memoize(symparam, cachedGetAssetsFromWTD)
-		if err != nil {
-			errorCount.Inc()
-			log.Printf("error looking up %s: %v\n", symparam, err)
-			return
-		}
-		if cached {
-			log.Printf("Using cached results for %s", symparam)
-		}
-
-		// ls contains the list of labels and lvs the corresponding values.
-		ls := []string{"symbol", "name"}
-
-		for _, asset := range assets.([]map[string]string) {
-			lvs := []string{asset["symbol"], asset["name"]}
-
-			// WTD will send null prices for stocks over the weekend. The
-			// fetcher will not populate the assets in this case.
-			if _, ok := asset["price"]; !ok {
-				log.Printf("no price for asset %s. Skipping.\n", asset["symbol"])
-				continue
-			}
-			price, err := strconv.ParseFloat(asset["price"], 64)
-			if err != nil {
-				errorCount.Inc()
-				log.Printf("error converting asset price to numeric %s: %v\n", asset["price"], err)
-				continue
-			}
-			log.Printf("Found %s (%s), price: %f\n", asset["symbol"], asset["name"], price)
-
-			ch <- prometheus.MustNewConstMetric(
-				prometheus.NewDesc("quotes_exporter_price", "Asset Price.", ls, nil),
-				prometheus.GaugeValue,
-				price,
-				lvs...,
-			)
-		}
-	}
-}
-
-// getQuote returns information about a stock, mutual fund, or ETF. It uses the
-// "type" in the list of symbols prefix to determine the type of securities to
-// retrieve.
-func getQuote(w http.ResponseWriter, r *http.Request, fetcher fetcherFunc) {
+// priceHandler handles the "/price" endpoint. It creates a new collector with
+// the URL and a new prometheus registry to use that collector.
+func priceHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("URL: %s\n", r.RequestURI)
 
-	collector, err := newCollector(r.URL, fetcher)
+	collector, err := newCollector(r.URL)
 	if err != nil {
 		log.Print(err)
 		return
@@ -163,52 +46,17 @@ func getQuote(w http.ResponseWriter, r *http.Request, fetcher fetcherFunc) {
 	h.ServeHTTP(w, r)
 }
 
-// newCollector returns a new collector object with parsed data from the URL object.
-func newCollector(myurl *url.URL, fetcher fetcherFunc) (collector, error) {
-	var (
-		qtypes  []int
-		symbols [][]string
-	)
-
-	// Typical query is formatted as: ?symbols=type:AAA,BBB...&symbols=type:CCC,DDD...
-	qvalues, ok := myurl.Query()["symbols"]
-	if !ok {
-		return collector{}, fmt.Errorf("missing \"symbols\" in query")
-	}
-
-	for _, qvalue := range qvalues {
-		pos := strings.Index(qvalue, ":")
-		if pos == -1 {
-			return collector{}, fmt.Errorf("missing type specifier in query: %s", qvalue)
-		}
-		t := qvalue[:pos]
-		s := qvalue[pos+1:]
-
-		if qtype, ok := queryTypes[t]; ok {
-			qtypes = append(qtypes, qtype)
-			symbols = append(symbols, strings.Split(s, ","))
-			continue
-		}
-		return collector{}, fmt.Errorf("invalid type %q in query: %s", t, qvalue)
-	}
-
-	return collector{qtypes, symbols, fetcher}, nil
-}
-
 // help returns a help message for those using the root URL.
 func help(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Prometheus Quotes Exporter</h1>")
 	fmt.Fprintf(w, "<p>To fetch quotes, your URL must be formatted as:</p>")
-	fmt.Fprintf(w, "http://localhost:%d/price?symbols=type:AAAA,BBBB,CCCC", flagPort)
-	fmt.Fprintf(w, "<p>")
-	fmt.Fprintf(w, "The \"type\" designator above could be \"stock\" or \"fund\" to indicate<br>")
-	fmt.Fprintf(w, "the symbols following refer to stocks or mutual funds, respectively.</p>")
+	fmt.Fprintf(w, "http://localhost:%d/price?symbols=AAAA,BBBB,CCCC", flagPort)
 	fmt.Fprintf(w, "<p><b>Examples:</b></p>")
 	fmt.Fprintf(w, "<ul>")
 
 	symbols := []string{
-		"stock:AMZN,GOOG,SNAP",
-		"fund:VTIAX",
+		"AMZN,GOOG,SNAP",
+		"VTIAX",
 	}
 
 	for _, s := range symbols {
@@ -219,33 +67,7 @@ func help(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.IntVar(&flagPort, "port", 9340, "Port to listen for HTTP requests.")
-	flag.StringVar(&flagToken, "token", "", "Token for worldtradingdata.com.")
-	flag.StringVar(&flagTokenFile, "tokenfile", "", "Read token from file (or \"-\" for stdin)")
 	flag.Parse()
-
-	// Read token from --token or --tokenfile. If file is '-', read from stdin.
-	// These options are mutually incompatible.
-	if flagToken != "" && flagTokenFile != "" {
-		log.Fatalf("Options --token and --tokenfile are mutually exclusive.")
-	}
-
-	if flagTokenFile != "" {
-		var (
-			err error
-			in  []byte
-		)
-
-		// Read from stdin if file == "-".
-		if flagTokenFile == "-" {
-			in, err = ioutil.ReadAll(os.Stdin)
-		} else {
-			in, err = ioutil.ReadFile(flagTokenFile)
-		}
-		if err != nil {
-			log.Fatalf("Unable to read token: %v", err)
-		}
-		flagToken = strings.TrimRight(string(in), "\n")
-	}
 
 	reg := prometheus.NewRegistry()
 
@@ -260,7 +82,7 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 
 	http.HandleFunc("/price", func(w http.ResponseWriter, r *http.Request) {
-		getQuote(w, r, getAssetsFromWTD)
+		priceHandler(w, r)
 	})
 
 	log.Print("Listening on port ", flagPort)
