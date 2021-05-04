@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"log"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ var (
 
 	// flags
 	flagPort int
+	flagVolume bool
 )
 
 // collector holds data for a prometheus collector.
@@ -120,7 +122,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		if cached {
 			c = " (cached)"
 		}
-		log.Printf("Retrieved %s (%s), price: %f%s\n", qq.Symbol, qq.ShortName, qq.RegularMarketPrice, c)
+		log.Printf("Retrieved %s (%s), price: %f, volume: %s%s\n",
+			qq.Symbol, qq.ShortName, qq.RegularMarketPrice, strconv.Itoa(qq.RegularMarketVolume), c)
 
 		ch <- prometheus.MustNewConstMetric(
 			prometheus.NewDesc("quotes_exporter_price", "Asset Price.", ls, nil),
@@ -128,5 +131,14 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 			qq.RegularMarketPrice,
 			lvs...,
 		)
+
+		if flagVolume {
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("quotes_exporter_volume", "Asset Volume.", ls, nil),
+				prometheus.GaugeValue,
+				float64(qq.RegularMarketVolume),
+				lvs...,
+			)
+		}
 	}
 }
