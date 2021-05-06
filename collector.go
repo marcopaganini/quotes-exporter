@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"log"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -122,8 +121,8 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		if cached {
 			c = " (cached)"
 		}
-		log.Printf("Retrieved %s (%s), price: %f, volume: %s%s\n",
-			qq.Symbol, qq.ShortName, qq.RegularMarketPrice, strconv.Itoa(qq.RegularMarketVolume), c)
+		log.Printf("Retrieved %s (%s), price: %f, volume: %d%s\n",
+			qq.Symbol, qq.ShortName, qq.RegularMarketPrice, qq.RegularMarketVolume, c)
 
 		ch <- prometheus.MustNewConstMetric(
 			prometheus.NewDesc("quotes_exporter_price", "Asset Price.", ls, nil),
