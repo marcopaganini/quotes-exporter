@@ -67,7 +67,6 @@ func help(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.IntVar(&flagPort, "port", 9340, "Port to listen for HTTP requests.")
-	flag.BoolVar(&flagVolume, "quote.volume", false, "Exports volume.")
 	flag.Parse()
 
 	reg := prometheus.NewRegistry()

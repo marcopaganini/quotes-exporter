@@ -50,7 +50,6 @@ var (
 
 	// flags
 	flagPort int
-	flagVolume bool
 )
 
 // collector holds data for a prometheus collector.
@@ -131,13 +130,11 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 			lvs...,
 		)
 
-		if flagVolume {
-			ch <- prometheus.MustNewConstMetric(
-				prometheus.NewDesc("quotes_exporter_volume", "Asset Volume.", ls, nil),
-				prometheus.GaugeValue,
-				float64(qq.RegularMarketVolume),
-				lvs...,
-			)
-		}
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("quotes_exporter_volume", "Asset Volume.", ls, nil),
+			prometheus.GaugeValue,
+			float64(qq.RegularMarketVolume),
+			lvs...,
+		)
 	}
 }
