@@ -120,12 +120,20 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		if cached {
 			c = " (cached)"
 		}
-		log.Printf("Retrieved %s (%s), price: %f%s\n", qq.Symbol, qq.ShortName, qq.RegularMarketPrice, c)
+		log.Printf("Retrieved %s (%s), price: %f, volume: %d%s\n",
+			qq.Symbol, qq.ShortName, qq.RegularMarketPrice, qq.RegularMarketVolume, c)
 
 		ch <- prometheus.MustNewConstMetric(
 			prometheus.NewDesc("quotes_exporter_price", "Asset Price.", ls, nil),
 			prometheus.GaugeValue,
 			qq.RegularMarketPrice,
+			lvs...,
+		)
+
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("quotes_exporter_volume", "Asset Volume.", ls, nil),
+			prometheus.GaugeValue,
+			float64(qq.RegularMarketVolume),
 			lvs...,
 		)
 	}
