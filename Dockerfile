@@ -1,4 +1,4 @@
-FROM golang:1.13-alpine3.10 AS builder
+FROM golang:1-alpine AS builder
 
 MAINTAINER Marco Paganini <paganini@paganini.net>
 
