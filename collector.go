@@ -1,4 +1,4 @@
-// (C) 2020 by Marco Paganini <paganini@paganini.net>
+// (C) 2023 by Marco Paganini <paganini@paganini.net>
 //
 // You may obtain a copy of the License at
 // http://www.apache.org/licenses/LICENSE-2.0
@@ -13,15 +13,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/kofalt/go-memoize"
-	"github.com/prometheus/client_golang/prometheus"
 	"log"
 	"net/url"
 	"strings"
 	"time"
 
-	finance "github.com/piquette/finance-go"
-	quote "github.com/piquette/finance-go/quote"
+	"github.com/kofalt/go-memoize"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/marcopaganini/quotes-exporter/stonks"
 )
 
 var (
@@ -87,7 +87,7 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 	for _, symbol := range c.symbols {
 		// Try not to hit the end point too hard.
 		cachedFetcher := func() (interface{}, error) {
-			return quote.Get(symbol)
+			return stonks.Quote(symbol)
 		}
 
 		start := time.Now()
@@ -100,40 +100,27 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		// Convert to native type as Memoize returns an interface.
-		qq, ok := qret.(*finance.Quote)
+		price, ok := qret.(float64)
 		if !ok {
 			errorCount.Inc()
 			log.Printf("Invalid quote data for %s: %v\n", symbol, qret)
 			return
 		}
-		if qq == nil {
-			errorCount.Inc()
-			log.Printf("Empty data from symbol lookup for %s. Assuming not found\n", symbol)
-			return
-		}
 
 		// ls contains the list of labels and lvs the corresponding values.
 		ls := []string{"symbol", "name"}
-		lvs := []string{qq.Symbol, qq.ShortName}
+		lvs := []string{symbol, symbol}
 
 		c := ""
 		if cached {
 			c = " (cached)"
 		}
-		log.Printf("Retrieved %s (%s), price: %f, volume: %d%s\n",
-			qq.Symbol, qq.ShortName, qq.RegularMarketPrice, qq.RegularMarketVolume, c)
+		log.Printf("Retrieved %s%s, price: %f\n", symbol, c, price)
 
 		ch <- prometheus.MustNewConstMetric(
 			prometheus.NewDesc("quotes_exporter_price", "Asset Price.", ls, nil),
 			prometheus.GaugeValue,
-			qq.RegularMarketPrice,
-			lvs...,
-		)
-
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("quotes_exporter_volume", "Asset Volume.", ls, nil),
-			prometheus.GaugeValue,
-			float64(qq.RegularMarketVolume),
+			price,
 			lvs...,
 		)
 	}

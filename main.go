@@ -1,4 +1,4 @@
-// (C) 2019 by Marco Paganini <paganini@paganini.net>
+// (C) 2023 by Marco Paganini <paganini@paganini.net>
 //
 // You may obtain a copy of the License at
 // http://www.apache.org/licenses/LICENSE-2.0
@@ -18,6 +18,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -55,8 +56,8 @@ func help(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<ul>")
 
 	symbols := []string{
-		"AMZN,GOOG,SNAP",
-		"VTIAX",
+		"AMD",
+		"AMZN,GOOG",
 	}
 
 	for _, s := range symbols {
@@ -73,8 +74,8 @@ func main() {
 
 	// Add standard process and Go metrics.
 	reg.MustRegister(
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
-		prometheus.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
 	)
 
 	// Add handlers.

@@ -9,9 +9,10 @@ on any desirable condition (note: prometheus configuration not covered here.)
 
 ## Data Provider Setup
 
-This project uses the [finance-go](https://github.com/piquette/finance-go)
-library to fetch stock price information. The library currently retrieves
-quotes from Yahoo Finance.
+This project uses the [stonks page](https://stonks.scd31.com) to fetch stock
+price information. This method **does not** support Mutual Funds, but avoids
+the hassle of having to create an API key and quota issues of most financial
+API providers.
 
 The program is smart enough to "memoize" calls to the financial data provider
 and by default caches quotes for 10m. This should reduce the load on the
