@@ -7,11 +7,11 @@
 **Q**: Why???
 
 **A**: I couldn't find a financial data provider offering a reasonable amount
-of free quota Some have ridiculous limitations (20 requests per *day*), while
-others will only provide historical data. In some cases, it would still be
-possible to have users register their own accounts and use their own API keys,
-but I feel this solution would be confusing and less than satisfactory. I may
-resuscitate this project if a reasonable provider surfaces.
+of free quota. Some providers have ridiculous limitations (20 requests per
+*day*), while others will only allow historical data. In some cases, it would
+still be possible to have users register their own accounts and use their own
+API keys, but I feel this solution would be confusing and less than
+satisfactory. I may resuscitate this project if a reasonable provider surfaces.
 
 ---
 
